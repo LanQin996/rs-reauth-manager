@@ -26,3 +26,25 @@ export function progress(job?: Job) {
   if (job?.kind === 'logout') return ({ queued: '等待退出', preparing: '核对账号', logout: '退出中', logged_out: '已退出', success: '已退出', failed: '退出失败', review: '需要核对', interrupted: '已中断', cancelled: '已取消' } as Record<string, string>)[job.step] || '退出中'
   return !job ? '未执行' : ({ queued: '等待处理', preparing: '核对资料', session: '建立会话', login: '协议登录', mfa: '验证 2FA', saving: '写回授权', success: '已写回', free: '登录成功', failed: '登录失败', workspace: '工作区不匹配', review: '需要核对', interrupted: '已中断', cancelled: '已取消' } as Record<string, string>)[job.step] || '登录中'
 }
+
+export type Tone = 'default' | 'primary' | 'success' | 'info' | 'warning' | 'danger'
+export function statusTone(a: Account): Tone {
+  if (!a.enabled) return 'default'
+  return ({ normal: 'success', error: 'danger', quota_exhausted: 'warning', rate_limited: 'warning' } as Record<string, Tone>)[a.status] || 'default'
+}
+export function jobTone(job?: Job): Tone {
+  if (!job) return 'default'
+  if (job.status === 'success') return 'success'
+  if (isUnfinished(job)) return 'danger'
+  return isActive(job) ? 'info' : 'default'
+}
+export function expiryInfo(value: string | null, now = Date.now()): { text: string; tone: Tone; title: string } {
+  const at = value ? new Date(value).getTime() : NaN
+  if (!Number.isFinite(at)) return { text: '未知', tone: 'default', title: '' }
+  const left = at - now, title = displayTime(value)
+  if (left <= 0) return { text: '已过期', tone: 'danger', title }
+  const hours = left / 3600000
+  if (hours < 1) return { text: `${Math.max(1, Math.round(left / 60000))} 分钟后到期`, tone: 'warning', title }
+  if (hours < 24) return { text: `${Math.floor(hours)} 小时后到期`, tone: 'warning', title }
+  return { text: `${Math.floor(hours / 24)} 天后到期`, tone: 'default', title }
+}

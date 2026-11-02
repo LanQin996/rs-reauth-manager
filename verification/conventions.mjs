@@ -49,7 +49,7 @@ for (const repo of repos) {
     test(!/\b(?:fetch|XMLHttpRequest)\s*\(|document\.cookie|window\.(?:parent|top)/.test(source), `${relative}: bypasses isolated management bridge`)
     test(!/[。；]/.test(source), `${relative}: UI punctuation violates theme guidance`)
     if (file.endsWith('.css')) {
-      test(!source.includes('--cp-'), `${relative}: legacy theme variables are incompatible with CPR 3.37.2`)
+      test(!source.includes('--cp-'), `${relative}: legacy theme variables are incompatible with CPR 3.37.2+`)
       for (const [, variable] of source.matchAll(/var\((--z-[\w-]+)/g)) {
         test(Object.hasOwn(themeVars, variable), `${relative}: unknown public theme variable ${variable}`)
       }

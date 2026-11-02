@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { ZButton } from '@codex-proxy/ui/button'
+import { ZCard } from '@codex-proxy/ui/card'
+import Notice from './Notice.vue'
 import { ZCheckbox } from '@codex-proxy/ui/checkbox'
 import { ZInput } from '@codex-proxy/ui/input'
 import { ZSelect } from '@codex-proxy/ui/select'
@@ -72,40 +74,51 @@ onUnmounted(() => { password.value = ''; secret.value = ''; loginProxy.value = '
 </script>
 <template>
   <section class="settings-page" aria-label="账号导入">
-    <h2>账号导入</h2><p class="muted">使用邮箱、密码和 2FA 验证器密钥登录，并通过 CPR 原生 OAuth 流程创建账号</p>
-    <p v-if="!props.enabled" class="message">请先开启页面顶部的插件总开关</p>
-    <p v-if="pending" class="message">当前有授权任务正在执行，请等待队列结束后导入</p>
-    <p v-if="error" role="alert" class="message danger">{{ error }}</p><p v-if="message" role="status" class="message success">{{ message }}</p>
-    <ZButton :loading="loading" :disabled="busy" @click="load">刷新分组与代理</ZButton>
+    <div><h2 class="page-title">账号导入</h2><p class="muted">使用邮箱、密码和 2FA 验证器密钥登录，并通过 CPR 原生 OAuth 流程创建账号</p></div>
+    <Notice v-if="!props.enabled" tone="warning">请先开启页面顶部的插件总开关</Notice>
+    <Notice v-if="pending" tone="info">当前有授权任务正在执行，请等待队列结束后导入</Notice>
+    <Notice v-if="error" role="alert" tone="danger">{{ error }}</Notice><Notice v-if="message" role="status" tone="success">{{ message }}</Notice>
+    <div><ZButton :loading="loading" :disabled="busy" @click="load">刷新分组与代理</ZButton></div>
     <form autocomplete="off" @submit.prevent="submit">
       <fieldset class="settings-fields" :disabled="busy || !ready || !props.enabled">
-        <h3>登录资料</h3>
-        <label class="field-label">粘贴登录资料<ZInput :model-value="''" type="password" autocomplete="new-password" placeholder="邮箱----密码----2FA 密钥" aria-label="粘贴登录资料" @paste.prevent="pasteCredentials" /><small class="muted">整行粘贴到此处或邮箱栏，自动填写下方登录资料，每次一个账号</small></label>
-        <div class="form-grid">
-          <label class="field-label">邮箱<ZInput v-model="email" type="email" autocomplete="off" aria-label="导入账号邮箱" @paste="pasteCredentials" /></label>
-          <label class="field-label">账号名称<ZInput v-model="name" placeholder="留空使用邮箱" aria-label="导入账号名称" /></label>
-          <label class="field-label">密码<ZInput v-model="password" type="password" autocomplete="new-password" aria-label="导入账号密码" /></label>
-          <label class="field-label">2FA 密钥<ZInput v-model="secret" type="password" autocomplete="new-password" placeholder="Base32 验证器密钥，非六位动态码" aria-label="导入账号 2FA 密钥" /></label>
-        </div>
-        <label class="field-label">工作区 ID（可选）<ZInput v-model="workspace" placeholder="个人账号可留空，多个工作区时需明确指定" aria-label="导入工作区 ID" /></label>
-        <h3>账号参数</h3><div class="form-grid">
-          <label class="field-label">上游传输方式<ZSelect v-model="transport" :options="[{ value: 'prefer_websocket', label: 'WS' }, { value: 'http', label: 'SSE' }]" aria-label="上游传输方式" /></label>
-          <label class="field-label">出站代理<ZSelect v-model="proxyId" :options="proxyOptions" aria-label="导入账号出站代理" /></label>
-          <label class="field-label">并发限制<ZInput v-model="concurrency" type="number" min="1" max="4294967295" placeholder="留空使用默认值" aria-label="导入账号并发限制" /></label>
-          <label class="field-label">权重<ZInput v-model="weight" type="number" min="1" max="100" aria-label="导入账号权重" /></label>
-        </div>
-        <label class="field-label" v-if="selectedProxy?.hasAuthentication">登录代理认证地址（可选）<ZInput v-model="loginProxy" type="password" autocomplete="new-password" placeholder="无关联账号可读取认证时，填写完整代理 URL" aria-label="登录代理认证地址" /><small class="muted">优先复用所选代理关联账号的认证信息，手填地址必须与所选代理的协议、主机及端口一致，仅用于本次登录</small></label>
-        <ZSwitch v-model="enabled" label="导入完成后启用调度" aria-label="导入完成后启用调度" />
-        <div class="field-block"><h3>所属分组</h3><div class="choice-grid"><ZCheckbox v-for="g in options.groups" :key="g.id" :model-value="groupIds.includes(g.id)" :label="g.name" @change="selectGroup(g.id, $event)" /><span v-if="!options.groups.length" class="muted">暂无分组，导入为未分组账号</span></div></div>
-        <label class="field-label">模型权限<ZSelect v-model="mode" :options="[{ value: 'all', label: '全部模型' }, { value: 'allowlist', label: '仅允许指定模型' }, { value: 'denylist', label: '拒绝指定模型' }]" aria-label="导入账号模型权限" /></label>
-        <label class="field-label" v-if="mode !== 'all'">模型 ID<ZTextarea v-model="models" :rows="3" placeholder="每行一个精确模型 ID，不支持通配符" aria-label="导入账号模型列表" /></label>
-        <ZCheckbox v-model="saveLogin" label="将登录资料保存到 CPR 账号备注，供后续自动重新授权使用" />
-        <p v-if="saveLogin" class="muted">账号备注将保存为 邮箱----密码----2FA，仅在 CPR 中保存，备注最长 500 字</p>
-        <label class="field-label" v-else>备注<ZTextarea v-model="notes" :rows="3" :maxlength="500" placeholder="最多 500 字" aria-label="导入账号备注" /></label>
-        <p class="muted">账号先以停用状态创建，传输方式和参数核对通过后按设置启用，需人工验证或存在多个未指定工作区时停止，结果不确定时请先在 CPR 中核对账号</p>
-        <div class="form-actions"><ZButton type="primary" :loading="busy" :disabled="pending || !ready || !props.enabled" @click="submit">登录并导入 CPR</ZButton><span v-if="submittedJob" role="status">{{ progress(submittedJob) }} · {{ submittedJob.message }}</span></div>
+        <ZCard as="div" class="settings-card" title="登录资料" description="密码与 2FA 密钥只在内存中使用，提交成功或离开页面时清空">
+          <div class="settings-fields">
+            <label class="field-label">粘贴登录资料<ZInput :model-value="''" type="password" autocomplete="new-password" placeholder="邮箱----密码----2FA 密钥" aria-label="粘贴登录资料" @paste.prevent="pasteCredentials" /><small>整行粘贴到此处或邮箱栏，自动填写下方登录资料，每次一个账号</small></label>
+            <div class="form-grid">
+              <label class="field-label">邮箱<ZInput v-model="email" type="email" autocomplete="off" aria-label="导入账号邮箱" @paste="pasteCredentials" /></label>
+              <label class="field-label">账号名称<ZInput v-model="name" placeholder="留空使用邮箱" aria-label="导入账号名称" /></label>
+              <label class="field-label">密码<ZInput v-model="password" type="password" autocomplete="new-password" aria-label="导入账号密码" /></label>
+              <label class="field-label">2FA 密钥<ZInput v-model="secret" type="password" autocomplete="new-password" placeholder="Base32 验证器密钥，非六位动态码" aria-label="导入账号 2FA 密钥" /></label>
+            </div>
+            <label class="field-label">工作区 ID（可选）<ZInput v-model="workspace" placeholder="个人账号可留空，多个工作区时需明确指定" aria-label="导入工作区 ID" /></label>
+          </div>
+        </ZCard>
+        <ZCard as="div" class="settings-card" title="账号参数" description="与 CPR 官方 OAuth 编辑账号参数一致">
+          <div class="settings-fields">
+            <div class="form-grid">
+              <label class="field-label">上游传输方式<ZSelect v-model="transport" :options="[{ value: 'prefer_websocket', label: 'WS' }, { value: 'http', label: 'SSE' }]" aria-label="上游传输方式" /></label>
+              <label class="field-label">出站代理<ZSelect v-model="proxyId" :options="proxyOptions" aria-label="导入账号出站代理" /></label>
+              <label class="field-label">并发限制<ZInput v-model="concurrency" type="number" min="1" max="4294967295" placeholder="留空使用默认值" aria-label="导入账号并发限制" /></label>
+              <label class="field-label">权重<ZInput v-model="weight" type="number" min="1" max="100" aria-label="导入账号权重" /></label>
+            </div>
+            <label class="field-label" v-if="selectedProxy?.hasAuthentication">登录代理认证地址（可选）<ZInput v-model="loginProxy" type="password" autocomplete="new-password" placeholder="无关联账号可读取认证时，填写完整代理 URL" aria-label="登录代理认证地址" /><small>优先复用所选代理关联账号的认证信息，手填地址必须与所选代理的协议、主机及端口一致，仅用于本次登录</small></label>
+            <ZSwitch v-model="enabled" label="导入完成后启用调度" aria-label="导入完成后启用调度" />
+            <div class="field-block"><h3>所属分组</h3><div class="choice-grid"><ZCheckbox v-for="g in options.groups" :key="g.id" :model-value="groupIds.includes(g.id)" :label="g.name" @change="selectGroup(g.id, $event)" /><span v-if="!options.groups.length" class="muted">暂无分组，导入为未分组账号</span></div></div>
+            <label class="field-label">模型权限<ZSelect v-model="mode" :options="[{ value: 'all', label: '全部模型' }, { value: 'allowlist', label: '仅允许指定模型' }, { value: 'denylist', label: '拒绝指定模型' }]" aria-label="导入账号模型权限" /></label>
+            <label class="field-label" v-if="mode !== 'all'">模型 ID<ZTextarea v-model="models" :rows="3" placeholder="每行一个精确模型 ID，不支持通配符" aria-label="导入账号模型列表" /></label>
+          </div>
+        </ZCard>
+        <ZCard as="div" class="settings-card" title="备注与提交">
+          <div class="settings-fields">
+            <ZCheckbox v-model="saveLogin" label="将登录资料保存到 CPR 账号备注，供后续自动重新授权使用" />
+            <p v-if="saveLogin" class="muted">账号备注将保存为 邮箱----密码----2FA，仅在 CPR 中保存，备注最长 500 字</p>
+            <label class="field-label" v-else>备注<ZTextarea v-model="notes" :rows="3" :maxlength="500" placeholder="最多 500 字" aria-label="导入账号备注" /></label>
+            <Notice tone="info">账号先以停用状态创建，传输方式和参数核对通过后按设置启用，需人工验证或存在多个未指定工作区时停止，结果不确定时请先在 CPR 中核对账号</Notice>
+            <div class="form-actions"><ZButton type="primary" :loading="busy" :disabled="pending || !ready || !props.enabled" @click="submit">登录并导入 CPR</ZButton><span v-if="submittedJob" role="status">{{ progress(submittedJob) }} · {{ submittedJob.message }}</span></div>
+          </div>
+        </ZCard>
       </fieldset>
     </form>
-    <div v-if="imports.length" class="import-history"><h3>最近导入任务</h3><article v-for="j in imports" :key="j.requestId" class="import-result"><strong :class="{ danger: ['review', 'failed', 'interrupted'].includes(j.status), success: j.status === 'success' }">{{ progress(j) }}</strong><span>{{ j.message || '正在处理' }}</span><ZButton v-for="choice in j.workspaceChoices || []" :key="choice.id" size="small" :disabled="busy" @click="workspace = choice.id">使用工作区 {{ choice.id }}</ZButton><code v-if="j.accountId">{{ j.accountId }}</code><time>{{ displayTime(j.finishedAt || j.startedAt) }}</time><JobLogs :job="j" /></article></div>
+    <ZCard v-if="imports.length" as="div" class="import-history" title="最近导入任务"><article v-for="j in imports" :key="j.requestId" class="import-result"><strong :class="{ danger: ['review', 'failed', 'interrupted'].includes(j.status), success: j.status === 'success' }">{{ progress(j) }}</strong><span>{{ j.message || '正在处理' }}</span><ZButton v-for="choice in j.workspaceChoices || []" :key="choice.id" size="small" :disabled="busy" @click="workspace = choice.id">使用工作区 {{ choice.id }}</ZButton><code v-if="j.accountId" class="mono">{{ j.accountId }}</code><time>{{ displayTime(j.finishedAt || j.startedAt) }}</time><JobLogs :job="j" /></article></ZCard>
   </section>
 </template>

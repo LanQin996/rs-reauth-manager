@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { ZButton } from '@codex-proxy/ui/button'
+import { ZCard } from '@codex-proxy/ui/card'
+import Notice from './Notice.vue'
 import { ZCheckbox } from '@codex-proxy/ui/checkbox'
 import { ZInput } from '@codex-proxy/ui/input'
 import { ZSwitch } from '@codex-proxy/ui/switch'
@@ -44,20 +46,27 @@ onMounted(load)
 </script>
 <template>
   <section class="settings-page" aria-label="自动重新授权参数配置">
-    <h2>自动重新授权</h2>
-    <p class="muted">分组、账号状态与订阅条件同时满足时，后台串行重新授权，组内多选项满足任一项即可</p>
-    <p v-if="!enabled" class="message">插件总开关已关闭，保存配置后，仍须开启总开关才能执行</p>
-    <p v-if="error" class="message danger" role="alert">{{ error }}</p>
-    <ZButton v-if="loading || error" :loading="loading" @click="load">读取配置与分组</ZButton>
+    <div><h2 class="page-title">自动重新授权</h2><p class="muted">分组、账号状态与订阅条件同时满足时，后台串行重新授权，组内多选项满足任一项即可</p></div>
+    <Notice v-if="!enabled" tone="warning">插件总开关已关闭，保存配置后，仍须开启总开关才能执行</Notice>
+    <Notice v-if="error" tone="danger" role="alert">{{ error }}</Notice>
+    <div v-if="loading || error"><ZButton :loading="loading" @click="load">读取配置与分组</ZButton></div>
     <form v-if="!loading" @submit.prevent="save">
       <fieldset :disabled="saving || !ready" class="settings-fields">
-        <ZSwitch v-model="config.enabled" label="开启自动重新授权" aria-label="开启自动重新授权" />
-        <div class="form-grid"><label class="field-label">扫描间隔（分钟）<ZInput v-model="interval" type="number" min="1" max="1440" aria-label="扫描间隔（分钟）" /></label><label class="field-label">同一账号冷却时间（小时）<ZInput v-model="cooldown" type="number" min="1" max="168" aria-label="同一账号冷却时间（小时）" /></label></div>
-        <ZCheckbox v-model="config.enabledOnly" label="仅处理已启用调度的账号" />
-        <div class="field-block"><h3>分组范围</h3><ZCheckbox v-model="config.allGroups" label="全部分组（包含未分组）" /><div v-if="!config.allGroups" class="choice-grid"><ZCheckbox :model-value="config.includeUngrouped" label="未分组" @change="config.includeUngrouped = $event" /><ZCheckbox v-for="g in groups" :key="g.id" :model-value="config.groupIds.includes(g.id)" :label="g.name" @change="toggle('groupIds', g.id, $event)" /><span v-for="id in config.groupIds.filter(id => !groups.some(g => g.id === id))" :key="id" class="danger">已删除分组：{{ id }} <ZButton size="small" @click="toggle('groupIds', id, false)">移除</ZButton></span></div></div>
-        <div class="field-block"><h3>账号状态</h3><div class="choice-grid"><ZCheckbox v-for="s in statuses" :key="s.value" :model-value="config.statuses.includes(s.value)" :label="s.label" @change="toggle('statuses', s.value, $event)" /></div><p class="muted">默认仅异常，选择正常、限流或额度耗尽状态也会触发重新登录</p></div>
-        <div class="field-block"><h3>订阅范围</h3><ZCheckbox v-model="config.allPlans" label="全部订阅" /><div v-if="!config.allPlans" class="choice-grid"><ZCheckbox v-for="p in plans" :key="p" :model-value="config.plans.includes(p)" :label="planLabel(p)" @change="toggle('plans', p, $event)" /></div></div>
-        <div class="message">当前条件匹配 {{ matches.length }} 个账号，其中 {{ matches.filter(a => a.notesValid && a.proxy).length }} 个具备备注和代理，实际执行还会检查账号空闲、冷却及在途任务，</div>
+        <ZCard as="div" class="settings-card" title="基本设置" description="自动授权默认关闭，更新插件不会自动登录">
+          <div class="settings-fields">
+            <ZSwitch v-model="config.enabled" label="开启自动重新授权" aria-label="开启自动重新授权" />
+            <div class="form-grid"><label class="field-label">扫描间隔（分钟）<ZInput v-model="interval" type="number" min="1" max="1440" aria-label="扫描间隔（分钟）" /><small>1–1440 分钟</small></label><label class="field-label">同一账号冷却时间（小时）<ZInput v-model="cooldown" type="number" min="1" max="168" aria-label="同一账号冷却时间（小时）" /><small>1–168 小时</small></label></div>
+            <ZCheckbox v-model="config.enabledOnly" label="仅处理已启用调度的账号" />
+          </div>
+        </ZCard>
+        <ZCard as="div" class="settings-card" title="匹配范围" description="三项条件同时满足的账号才会被处理">
+          <div class="settings-fields">
+            <div class="field-block"><h3>分组范围</h3><ZCheckbox v-model="config.allGroups" label="全部分组（包含未分组）" /><div v-if="!config.allGroups" class="choice-grid"><ZCheckbox :model-value="config.includeUngrouped" label="未分组" @change="config.includeUngrouped = $event" /><ZCheckbox v-for="g in groups" :key="g.id" :model-value="config.groupIds.includes(g.id)" :label="g.name" @change="toggle('groupIds', g.id, $event)" /><span v-for="id in config.groupIds.filter(id => !groups.some(g => g.id === id))" :key="id" class="danger">已删除分组：{{ id }} <ZButton size="small" @click="toggle('groupIds', id, false)">移除</ZButton></span></div></div>
+            <div class="field-block"><h3>账号状态</h3><div class="choice-grid"><ZCheckbox v-for="s in statuses" :key="s.value" :model-value="config.statuses.includes(s.value)" :label="s.label" @change="toggle('statuses', s.value, $event)" /></div><p class="muted">默认仅异常，选择正常、限流或额度耗尽状态也会触发重新登录</p></div>
+            <div class="field-block"><h3>订阅范围</h3><ZCheckbox v-model="config.allPlans" label="全部订阅" /><div v-if="!config.allPlans" class="choice-grid"><ZCheckbox v-for="p in plans" :key="p" :model-value="config.plans.includes(p)" :label="planLabel(p)" @change="toggle('plans', p, $event)" /></div></div>
+          </div>
+        </ZCard>
+        <Notice tone="info">当前条件匹配 {{ matches.length }} 个账号，其中 {{ matches.filter(a => a.notesValid && a.proxy).length }} 个具备备注和代理，实际执行还会检查账号空闲、冷却及在途任务</Notice>
         <p class="muted">后台扫描由 CPR 维护回调推进，页面关闭后继续生效，写回结果不确定或进程中断的账号不会自动重试，请先手动核对并重新授权，更新配置会取消尚未执行的自动任务</p>
         <div class="form-actions"><ZButton type="primary" :loading="saving" @click="save">保存配置</ZButton><span v-if="saved" class="success" role="status">配置已保存</span></div>
       </fieldset>

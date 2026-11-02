@@ -7,7 +7,7 @@ import type { Account, Job } from './types'
 export function useReauthManager() {
   const accounts = ref<Account[]>([]), jobs = ref<Job[]>([]), selected = ref<string[]>([])
   const loading = ref(false), busy = ref(false), error = ref(''), search = ref(''), plan = ref('all'), filter = ref('all'), page = ref(1), pageSize = ref(20)
-  const enabled = ref(false)
+  const enabled = ref(false), loaded = ref(false)
   const group = ref('all')
   const showLogout = ref(false), logoutTargets = ref<Account[]>([])
   const showConfirm = ref(false), targets = ref<Account[]>([])
@@ -76,6 +76,7 @@ export function useReauthManager() {
   const visible = computed(() => filtered.value.slice((page.value - 1) * pageSize.value, page.value * pageSize.value))
   const pageCandidates = computed(() => visible.value.filter(a => ready(a) || logoutReady(a)))
   const pageSelected = computed(() => !!pageCandidates.value.length && pageCandidates.value.every(a => selected.value.includes(a.id)))
+  const pageIndeterminate = computed(() => !pageSelected.value && pageCandidates.value.some(a => selected.value.includes(a.id)))
   const chosen = computed(() => accounts.value.filter(a => selected.value.includes(a.id) && ready(a)))
   const chosenLogout = computed(() => accounts.value.filter(a => selected.value.includes(a.id) && logoutReady(a)))
   watch([search, group, plan, filter, pageSize], () => page.value = 1)
@@ -99,8 +100,8 @@ export function useReauthManager() {
     if (latest.enabled !== undefined) enabled.value = latest.enabled
     return receiveJobs(latest.jobs)
   }
-  function showResults(value: 'error' | 'success' | 'failed') { search.value = ''; group.value = 'all'; plan.value = 'all'; filter.value = value; page.value = 1 }
-  async function load() { loading.value = true; error.value = ''; try { await refreshJobs(); accounts.value = (await api.accounts()).accounts } catch (e) { error.value = (e as Error).message } finally { loading.value = false } }
+  function showResults(value: 'error' | 'active' | 'success' | 'failed') { search.value = ''; group.value = 'all'; plan.value = 'all'; filter.value = value; page.value = 1 }
+  async function load() { loading.value = true; error.value = ''; try { await refreshJobs(); accounts.value = (await api.accounts()).accounts; loaded.value = true } catch (e) { error.value = (e as Error).message } finally { loading.value = false } }
   async function setEnabled(value: boolean) {
     if (busy.value || value === enabled.value) return
     busy.value = true; error.value = ''
@@ -161,5 +162,7 @@ export function useReauthManager() {
   }
   onMounted(async () => { await load(); await poll() })
   onUnmounted(() => { destroyed = true; clearTimeout(timer) })
-  return { accounts, jobs, selected, loading, busy, error, enabled, search, plan, group, groupOptions, filter, page, pageSize, showConfirm, targets, jobOf, resultOf, ready, logoutReady, showLogout, logoutTargets, confirmLogout, submitLogout, chosenLogout, active, success, failed, eligibleCount, planOptions, filtered, visible, pageCandidates, pageSelected, chosen, selectOne, selectPage, showResults, load, setEnabled, confirm, submit, cancel, showForce, forceTarget, forceSource, forceWorkspace, forceConfirmed, canForce, openForce, submitForce, showFreeFallback, freeTarget, freeSource, freeConfirmed, canFreeFallback, openFreeFallback, submitFreeFallback }
+  return { accounts, jobs, selected, loading, busy, error, enabled, loaded, pageIndeterminate, search, plan, group, groupOptions, filter, page, pageSize, showConfirm, targets, jobOf, resultOf, ready, logoutReady, showLogout, logoutTargets, confirmLogout, submitLogout, chosenLogout, active, success, failed, eligibleCount, planOptions, filtered, visible, pageCandidates, pageSelected, chosen, selectOne, selectPage, showResults, load, setEnabled, confirm, submit, cancel, showForce, forceTarget, forceSource, forceWorkspace, forceConfirmed, canForce, openForce, submitForce, showFreeFallback, freeTarget, freeSource, freeConfirmed, canFreeFallback, openFreeFallback, submitFreeFallback }
 }
+
+export type ReauthManager = ReturnType<typeof useReauthManager>
