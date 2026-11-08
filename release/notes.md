@@ -1,3 +1,17 @@
+# 账号重新授权 v0.13.12
+
+适配 [Codex Proxy RS 3.43.0](https://github.com/zyycn/codex-proxy-rs/releases/tag/v3.43.0)，使用固定提交 `402bc37fbb5c83378cc83cec89e9fa251e4a99c1` 的公开插件 SDK 与 `cpr-plugin` 重新编译、打包。
+
+- 宿主兼容范围为 `>=3.43.0, <3.44.0`；CPR 3.41.2 及以上的 3.41.x 请继续使用 v0.13.11。
+- 合入 [LanQin996 的 PR #1](https://github.com/Victor-Tau/rs-reauth-manager/pull/1)，修复显式直连账号无法重新授权、自动扫描被跳过及无法退出所有登录的问题。沿用账号原出站设置，代理异常不降级为直连，保留精确账号关联、代理 revision、身份和凭据版本检查、冷却与不确定结果保护。
+- 官方 UI 升级到 0.9.0，使用公开组件及宿主主题变量。已核对 SDK 运行设置字段、账号额度点数字段及浏览器桥外链确认能力的变化；插件现有接口保持兼容，RPC v7、管理能力 v2、维护能力 v1 和浏览器桥 v2 不变。
+- Linux x86_64 安装包使用 `cargo zigbuild --target x86_64-unknown-linux-gnu.2.28` 构建，内置 Python 协议运行环境，附 SHA-256 校验文件。
+- 源码统一在 `main` 维护，历史版本标签与 Releases 保留。升级不会自动重新授权账号。
+- 构建和验证命令及其子进程绑定 CPU 0，Cargo 使用 `-j 1`，各步骤串行执行。
+- 前端生产构建、Rust 格式检查与严格 Clippy、14 项 Rust 测试、74 项 RPC 模拟宿主场景、76 项 Python 测试、18 项桥接场景、25 项页面状态场景及 581 项源码约定检查通过；1440px/390px 浏览器回归通过，覆盖直连操作、确认流程及明暗主题。
+- 已检查 ELF 版本依赖表，最高依赖 `GLIBC_2.28`；安装包 7 个文件摘要、协议源码一致性、RPC v7 握手、内置 Python 自检、0700 私有运行目录复用及退出清理验证通过。
+- 使用模拟宿主及离线数据验证，尚未完成 CPR 3.43.0 实际安装与真实账号完整链路验收。
+
 # 账号重新授权 v0.13.11
 
 适配 [Codex Proxy RS 3.41.2](https://github.com/zyycn/codex-proxy-rs/releases/tag/v3.41.2)，使用固定提交 `ba3baddbda7293d1d76ea066dd5e42298618c15a` 的公开插件 SDK 与 `cpr-plugin` 重新编译、打包。
