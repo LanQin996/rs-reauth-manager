@@ -140,6 +140,7 @@ try {
     assert.deepEqual(savedConfig, { enabled: true, intervalMinutes: 30, cooldownHours: 24, allGroups: false, groupIds: ['g1'], includeUngrouped: false, statuses: ['error'], allPlans: false, plans: ['free'], enabledOnly: true })
     await page.screenshot({ path: resolve(root, `.cache/reauth-ui/config-${width}.png`), fullPage: true })
     await scope.getByRole('button', { name: '账号导入', exact: true }).click()
+    assert.equal(await scope.getByLabel('导入工作区 ID', { exact: true }).getAttribute('placeholder'), '留空默认使用返回列表中的首个工作区')
     const pastedEmail = 'fixture+import@icloud.com', pastedPassword = 'fixture&password@@ value ', pastedSecret = 'GEZDGNBVGY3TQOJQ'
     assert.equal(await scope.getByRole('spinbutton', { name: '导入账号权重', exact: true }).inputValue(), '5')
     assert.equal(await scope.getByRole('switch', { name: '导入完成后启用调度', exact: true }).isChecked(), true)

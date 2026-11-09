@@ -90,7 +90,7 @@ onUnmounted(() => { password.value = ''; secret.value = ''; loginProxy.value = '
               <label class="field-label">密码<ZInput v-model="password" type="password" autocomplete="new-password" aria-label="导入账号密码" /></label>
               <label class="field-label">2FA 密钥<ZInput v-model="secret" type="password" autocomplete="new-password" placeholder="Base32 验证器密钥，非六位动态码" aria-label="导入账号 2FA 密钥" /></label>
             </div>
-            <label class="field-label">工作区 ID（可选）<ZInput v-model="workspace" placeholder="个人账号可留空，多个工作区时需明确指定" aria-label="导入工作区 ID" /></label>
+            <label class="field-label">工作区 ID（可选）<ZInput v-model="workspace" placeholder="留空默认使用返回列表中的首个工作区" aria-label="导入工作区 ID" /><small>手动填写时优先使用指定工作区，默认不区分 Team 或个人套餐</small></label>
           </div>
         </ZCard>
         <ZCard as="div" class="settings-card" title="账号参数" description="与 CPR 官方 OAuth 编辑账号参数一致">

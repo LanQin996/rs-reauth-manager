@@ -317,7 +317,10 @@ pub async fn submit(
 pub async fn finish(host: &HostClient, job: &mut Job, current: &Worker, output: &Value) {
     if output["event"] != "complete" {
         if output["code"] == "workspace" {
-            job.finish("failed", "工作区无法唯一确定，请指定工作区 ID 后重新导入");
+            job.finish(
+                "failed",
+                "工作区选择或授权校验失败，请核对后指定工作区 ID 重新导入",
+            );
             job.step = "workspace".into();
             job.workspace_choices = crate::workspace_choices(output);
             return;
