@@ -149,14 +149,19 @@ try {
       element.dispatchEvent(new ClipboardEvent('paste', { clipboardData, bubbles: true, cancelable: true }))
     }, value)
     for (const label of ['粘贴登录资料', '导入账号邮箱']) {
-      await paste(label, `${pastedEmail}----${pastedPassword}----${pastedSecret}`)
-      assert.equal(await scope.getByLabel('导入账号邮箱', { exact: true }).inputValue(), pastedEmail)
-      assert.equal(await scope.getByLabel('导入账号密码', { exact: true }).inputValue(), pastedPassword)
-      assert.equal(await scope.getByLabel('导入账号 2FA 密钥', { exact: true }).inputValue(), pastedSecret)
+      for (const [prefix, suffix] of [['', ''], ['', ' '], [' \r\n', '\r\n\t\u00a0']]) {
+        await paste(label, `${prefix}${pastedEmail}----${pastedPassword}----${pastedSecret}${suffix}`)
+        assert.equal(await scope.getByLabel('导入账号邮箱', { exact: true }).inputValue(), pastedEmail)
+        assert.equal(await scope.getByLabel('导入账号密码', { exact: true }).inputValue(), pastedPassword)
+        assert.equal(await scope.getByLabel('导入账号 2FA 密钥', { exact: true }).inputValue(), pastedSecret)
+        assert.equal(await scope.getByText('登录资料已填入，请核对后导入', { exact: true }).isVisible(), true)
+      }
     }
-    await paste('粘贴登录资料', `${pastedEmail}----bad----not-base32!`)
-    await scope.getByRole('alert').filter({ hasText: '粘贴格式无效' }).waitFor()
-    assert.equal(await scope.getByLabel('导入账号密码', { exact: true }).inputValue(), pastedPassword)
+    for (const invalid of [`${pastedEmail}----bad----not-base32!`, `${pastedEmail}----bad\npassword----${pastedSecret}`, `${pastedEmail}----bad----${pastedSecret}\r\nother@example.com----bad----${pastedSecret}`]) {
+      await paste('粘贴登录资料', invalid)
+      await scope.getByRole('alert').filter({ hasText: '粘贴格式无效' }).waitFor()
+      assert.equal(await scope.getByLabel('导入账号密码', { exact: true }).inputValue(), pastedPassword)
+    }
     await paste('粘贴登录资料', `${pastedEmail}----${pastedPassword}----${pastedSecret}`)
     await scope.getByRole('checkbox', { name: '测试组', exact: true }).locator('..').click()
     await scope.getByRole('button', { name: '登录并导入 CPR', exact: true }).click()

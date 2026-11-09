@@ -27,10 +27,10 @@ const selectedProxy = computed(() => options.value.proxies.find(p => p.id === pr
 const submittedJob = computed(() => props.jobs.find(j => j.requestId === submittedId.value))
 function selectGroup(id: string, checked: boolean) { groupIds.value = checked ? [...new Set([...groupIds.value, id])] : groupIds.value.filter(v => v !== id) }
 function pasteCredentials(event: ClipboardEvent) {
-  const text = event.clipboardData?.getData('text/plain') || ''
+  const text = (event.clipboardData?.getData('text/plain') || '').trim()
   if (!text.includes('----')) return
   event.preventDefault()
-  const parts = text.trim().split('----')
+  const parts = text.split('----')
   if (parts.length !== 3 || !/^[^\s@]+@[^\s@]+$/.test(parts[0].trim()) || !parts[1] || /[\r\n\u0000]/.test(text) || !/^[A-Z2-7]+=*$/i.test(parts[2].trim().replace(/ /g, ''))) {
     error.value = '粘贴格式无效，请使用 邮箱----密码----Base32 2FA 密钥，每次一个账号'
     return

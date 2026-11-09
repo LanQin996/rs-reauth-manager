@@ -218,6 +218,11 @@ try {
   await submit(['disabled']); assert.equal((await finish('disabled')).status, 'success'); assert.equal(accounts.find(a => a.id === 'disabled').enabled, false); check('Disabled account remains disabled after reauthorization')
   const freeBefore = structuredClone(free); const freeStarts = starts.length, freeCompletes = completes.length; await submit(['free']); assert.equal((await finish('free')).status, 'success'); assert.equal(starts.length, freeStarts + 1); assert.equal(completes.length, freeCompletes + 1); for (const k of ['id', 'enabled', 'groups', 'notes', 'outboundProxyEndpoint', 'name', 'accountId', 'planType']) assert.deepEqual(free[k], freeBefore[k]); check('Free account completes original-account authorization while preserving proxy and configuration')
   for (const id of ['bad_notes', 'active', 'api_key', 'other_provider']) { const old = starts.length; await submit([id]); assert.equal((await finish(id)).status, 'failed'); assert.equal(starts.length, old) } check('Invalid notes, active requests and unsupported credentials stop before login')
+  assert.match(job('active').message, /1 个在途请求/)
+  const unknownCapacity = make('unknown_capacity'); unknownCapacity.capacity.usedSlots = null; accounts.push(unknownCapacity); revisions.set(unknownCapacity.id, 1)
+  const beforeUnknownCapacity = starts.length; await submit([unknownCapacity.id]); assert.equal((await finish(unknownCapacity.id)).status, 'failed'); assert.match(job(unknownCapacity.id).message, /无法读取账号实时并发状态/); assert.equal(starts.length, beforeUnknownCapacity)
+  assert.equal(job(unknownCapacity.id).logs.at(-1).message, job(unknownCapacity.id).message)
+  check('Busy and unknown capacity have distinct diagnostics and neither starts authorization')
   const proxyAccount = id => { const a = make(id); accounts.push(a); revisions.set(id, 1); return a }
   const directEmpty = proxyAccount('direct_empty'); directEmpty.outboundProxyEndpoint = ''
   for (const a of [accounts.find(a => a.id === 'direct_null'), directEmpty]) {

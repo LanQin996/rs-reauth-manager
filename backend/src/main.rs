@@ -286,10 +286,15 @@ fn settings(a: &Value) -> Value {
     json!({"id":a["id"],"email":a["email"],"name":a["name"],"enabled":a["enabled"],"notes":a["notes"],"groups":a["groups"],"proxy":a["outboundProxyEndpoint"],"proxyBinding":a["_proxyBinding"],"weight":a["weight"],"concurrencyLimit":a["concurrencyLimit"],"modelAccess":a["modelAccess"],"accountId":a["accountId"],"userId":a["userId"],"planType":a["planType"]})
 }
 fn require_idle(a: &Value) -> Result<(), PluginFault> {
-    if a["capacity"]["usedSlots"].as_u64() != Some(0) {
-        return Err(fault("账号仍有在途请求或并发状态未知，请空闲后重试"));
+    match a["capacity"]["usedSlots"].as_u64() {
+        Some(0) => Ok(()),
+        Some(used) => Err(fault(&format!(
+            "账号当前有 {used} 个在途请求，已停止操作，请空闲后重试"
+        ))),
+        None => Err(fault(
+            "无法读取账号实时并发状态，已停止操作，请检查宿主运行状态后重试",
+        )),
     }
-    Ok(())
 }
 async fn detail(host: &HostClient, id: &str) -> Result<Value, PluginFault> {
     let data = admin(
@@ -1051,6 +1056,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn idle_check_distinguishes_active_requests_from_unknown_capacity() {
+        assert!(require_idle(&json!({"capacity":{"usedSlots":0}})).is_ok());
+        for used in [1, 20, u64::MAX] {
+            let error = require_idle(&json!({"capacity":{"usedSlots":used}})).unwrap_err();
+            assert!(error.message.contains(&format!("{used} 个在途请求")));
+            assert!(!error.message.contains("无法读取"));
+        }
+        for account in [
+            json!({}),
+            json!({"capacity":null}),
+            json!({"capacity":{}}),
+            json!({"capacity":{"usedSlots":null}}),
+            json!({"capacity":{"usedSlots":"0"}}),
+            json!({"capacity":{"usedSlots":-1}}),
+            json!({"capacity":{"usedSlots":false}}),
+        ] {
+            let error = require_idle(&account).unwrap_err();
+            assert!(error.message.contains("无法读取账号实时并发状态"));
+        }
+    }
 
     #[test]
     fn detailed_history_stays_within_management_response_budget() {
