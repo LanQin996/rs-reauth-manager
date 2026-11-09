@@ -201,7 +201,7 @@ const check = name => { passed++; console.log(`PASS ${name}`) }
 try {
   await start()
   check('RPC v7 handshake uses SDK default stage budgets')
-  const reg = JSON.parse((await call('management.register', {}, Buffer.alloc(0), 'registration')).payload.toString()); assert.equal(reg.resources.length, 3); assert.equal(reg.routes.length, 12); assert.ok(reg.routes.some(r => r.method === 'POST' && r.path === 'api/logout')); assert.ok(!reg.resources.some(r => r.path.includes('runtime'))); check('Only UI resources are exposed, protocol runtime stays private')
+  const reg = JSON.parse((await call('management.register', {}, Buffer.alloc(0), 'registration')).payload.toString()); assert.equal(reg.resources.length, 3); assert.equal(reg.routes.length, 13); assert.ok(reg.routes.some(r => r.method === 'POST' && r.path === 'api/logout')); assert.ok(reg.routes.some(r => r.method === 'POST' && r.path === 'api/import-batch')); assert.ok(!reg.resources.some(r => r.path.includes('runtime'))); check('Only UI resources are exposed, protocol runtime stays private')
   const largeContext = { method: 'GET', uri: '/plugin/api/jobs', http_version: 'HTTP/1.1', headers: [{ name: 'x-fixture', value: Buffer.alloc(70000, 'x').toString('base64') }], peer_addr: null, client_ip: null }
   const contextual = await call('management.handle', { method: 'GET', path: 'api/jobs', query: '', content_type: null, headers: [] }, Buffer.alloc(0), 'management', largeContext)
   assert.equal(contextual.result.status, 200); assert.ok(!contextual.payload.includes('fixture-private-context')); check('RPC v7 carries large request context separately from metadata and business JSON')
@@ -364,8 +364,8 @@ try {
   check('Switch survives plugin restart and reopening only allows explicitly submitted new jobs')
 
   const importPayload = (label, overrides = {}) => ({ requestId: randomUUID(), email: `${label}@example.com`, name: `${label}@example.com`, password: 'fixture-password', totpSecret: 'GEZDGNBVGY3TQOJQ', workspaceId: '', transport: 'prefer_websocket', outboundProxyId: 'proxy_default', loginProxyUrl: '', saveLoginNotes: false, settings: { notes: 'Imported account', enabled: true, concurrencyLimit: 12, weight: 42, modelAccess: { mode: 'allowlist', models: ['gpt-5', 'gpt-5-mini'] }, groupIds: ['g1', 'g2'] }, ...overrides })
-  async function finishImport(requestId) {
-    for (let i = 0; i < 100; i++) { await tick(); const j = records.get('queue').value.jobs.find(j => j.requestId === `${requestId}:import`); if (!['queued', 'running'].includes(j.status)) return j; await new Promise(r => setTimeout(r, 20)) }
+  async function finishImport(requestId, suffix = ':import') {
+    for (let i = 0; i < 100; i++) { await tick(); const j = records.get('queue').value.jobs.find(j => j.requestId === `${requestId}${suffix}`); if (!['queued', 'running'].includes(j.status)) return j; await new Promise(r => setTimeout(r, 20)) }
     throw new Error('Import did not finish')
   }
   const optionReply = await request('options'); assert.equal(optionReply.status, 200); assert.deepEqual(optionReply.value.groups, groups); assert.ok(!JSON.stringify(optionReply.value).includes('fixture:pass'))
@@ -400,6 +400,54 @@ try {
   const proxyForImport = proxies.find(p => p.id === 'proxy_default'); proxyForImport.revision++
   const beforeChangedImport = completes.length; assert.equal((await finishImport(changedImport.requestId)).status, 'review'); assert.equal(completes.length, beforeChangedImport)
   check('Changing selected proxy during import stops before account creation')
+  const batch = (...labels) => ({ requestId: randomUUID(), accounts: labels.map(label => importPayload(label)) })
+  const badBatch = batch('batch-valid', 'batch-invalid'); badBatch.accounts[1].totpSecret = 'not-base32!'
+  const beforeBadBatch = starts.length, beforeBadJobs = records.get('queue').value.jobs.length
+  for (const value of [badBatch, { requestId: randomUUID(), accounts: [] }, batch('batch-duplicate', 'batch-duplicate'), batch('import-success'), { requestId: randomUUID(), accounts: Array.from({ length: 101 }, (_, i) => importPayload(`over-limit-${i}`)) }]) assert.equal((await request('import-batch', value)).status, 400)
+  assert.equal(starts.length, beforeBadBatch); assert.equal(records.get('queue').value.jobs.length, beforeBadJobs)
+  check('Batch format, count, duplicate emails and existing accounts are rejected atomically before queueing')
+  const serial = batch('import-batch-first', 'failed-batch-second', 'import-batch-third'), beforeSerial = starts.length
+  assert.equal((await request('import-batch', serial)).status, 200); assert.equal(starts.length, beforeSerial)
+  assert.equal((await request('import-batch', serial)).status, 200)
+  assert.equal((await request('import-batch', { ...serial, accounts: serial.accounts.slice(1) })).status, 400)
+  assert.equal(records.get('queue').value.jobs.filter(j => j.requestId.startsWith(serial.requestId + ':')).length, 3)
+  assert.equal((await request('import', importPayload('batch-concurrent'))).status, 400)
+  await tick(); assert.equal(starts.length, beforeSerial + 1)
+  assert.equal((await finishImport(serial.requestId, ':import:0')).status, 'success')
+  assert.equal((await finishImport(serial.requestId, ':import:1')).status, 'failed')
+  assert.equal((await finishImport(serial.requestId, ':import:2')).status, 'success')
+  assert.deepEqual(starts.slice(beforeSerial).map(s => s.name), serial.accounts.map(a => a.email))
+  for (let i = 0; i < 3; i++) assert.equal(records.get('queue').value.jobs.find(j => j.requestId === `${serial.requestId}:import:${i}`).label, serial.accounts[i].email)
+  check('Batch imports are idempotent, serial, labelled per account and continue after a single login failure without persisting credentials')
+  const cancelBatch = batch('slow-batch-cancel', 'import-batch-cancel-next'), beforeCancelBatch = starts.length
+  await request('import-batch', cancelBatch); await tick(); assert.equal(starts.length, beforeCancelBatch + 1)
+  await request('cancel', { requestId: null }); await tick(); assert.equal(starts.length, beforeCancelBatch + 1)
+  for (let i = 0; i < 2; i++) assert.equal(records.get('queue').value.jobs.find(j => j.requestId === `${cancelBatch.requestId}:import:${i}`).status, 'cancelled')
+  check('Cancelling a batch stops its worker and drops all queued login material without starting subsequent accounts')
+  const closeBatch = batch('import-batch-close-a', 'import-batch-close-b'), beforeCloseBatch = starts.length
+  await request('import-batch', closeBatch); await request('config', { enabled: false }); await request('config', { enabled: true }); await tick(); assert.equal(starts.length, beforeCloseBatch)
+  check('Closing and reopening the plugin does not replay queued batch credentials')
+  const restartBatch = batch('slow-batch-restart', 'import-batch-restart-next'), beforeRestartBatch = starts.length
+  await request('import-batch', restartBatch); await tick(); await stop(); await start(); await request('jobs'); await tick()
+  assert.equal(starts.length, beforeRestartBatch + 1)
+  for (let i = 0; i < 2; i++) assert.equal(records.get('queue').value.jobs.find(j => j.requestId === `${restartBatch.requestId}:import:${i}`).status, 'interrupted')
+  check('Plugin restart interrupts running and queued batch jobs without replaying lost secrets')
+  const staleBatch = batch('import-batch-stale'), beforeStaleBatch = starts.length
+  await request('import-batch', staleBatch)
+  const preexisting = make('batch-external-created'); preexisting.email = staleBatch.accounts[0].email; accounts.push(preexisting); revisions.set(preexisting.id, 1)
+  assert.equal((await finishImport(staleBatch.requestId, ':import:0')).status, 'failed'); assert.equal(starts.length, beforeStaleBatch)
+  check('Queued batch accounts are rechecked for duplicates immediately before starting OAuth')
+  const reviewBatch = batch('import-batch-review', 'import-batch-after-review')
+  await request('import-batch', reviewBatch); importUpdateFailure = true
+  assert.equal((await finishImport(reviewBatch.requestId, ':import:0')).status, 'review'); importUpdateFailure = false
+  assert.equal((await finishImport(reviewBatch.requestId, ':import:1')).status, 'success')
+  const afterReview = starts.length; await tick(); assert.equal(starts.length, afterReview)
+  check('A partial batch import requires review without automatic retry while later accounts continue safely')
+  const fullBatch = batch(...Array.from({ length: 100 }, (_, i) => `batch-full-${i}`)), beforeFullBatch = starts.length
+  assert.equal((await request('import-batch', fullBatch)).status, 200)
+  assert.equal(records.get('queue').value.jobs.filter(j => j.requestId.startsWith(fullBatch.requestId + ':')).length, 100)
+  assert.equal(starts.length, beforeFullBatch); await request('cancel', { requestId: null }); await tick(); assert.equal(starts.length, beforeFullBatch)
+  check('A full 100-account batch fits state capacity and can be cancelled before any OAuth flow starts')
   const autoConfig = { enabled: true, intervalMinutes: 1, cooldownHours: 24, allGroups: false, groupIds: ['g2'], includeUngrouped: false, statuses: ['error'], allPlans: false, plans: ['free'], enabledOnly: true }
   const autoAccount = make('automatic-selected'); autoAccount.groups = [groups[1]]; autoAccount.planType = ' Free '; accounts.push(autoAccount); revisions.set(autoAccount.id, 1)
   const skipped = make('automatic-wrong-plan'); skipped.groups = [groups[1]]; accounts.push(skipped); revisions.set(skipped.id, 1)
